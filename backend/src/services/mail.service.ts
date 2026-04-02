@@ -2,16 +2,22 @@ import nodemailer from 'nodemailer';
 import { ENV } from '../config/env';
 
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: ENV.SMTP_HOST,
+  port: ENV.SMTP_PORT,
+  secure: ENV.SMTP_SECURE === 'true',
   auth: {
-    user: ENV.GMAIL_USER,
-    pass: ENV.GMAIL_APP_PASSWORD,
+    user: ENV.SMTP_USER,
+    pass: ENV.SMTP_PASSWORD,
   },
 });
 
-export async function sendOtpEmail(to: string, name: string, otp: string): Promise<void> {
+export async function sendOtpEmail(
+  to: string,
+  name: string,
+  otp: string,
+): Promise<void> {
   await transporter.sendMail({
-    from: `"ProductStore" <${ENV.GMAIL_USER}>`,
+    from: `"ProductStore" <${ENV.SMTP_USER}>`,
     to,
     subject: 'Verify your email — ProductStore',
     html: `

@@ -5,12 +5,15 @@ function requireEnv(key: string): string {
 }
 
 export const ENV = {
-  PORT: Number(process.env.PORT) || 3000,
-  NODE_ENV: process.env.NODE_ENV || 'development',
-  FRONTEND_URL: process.env.FRONTEND_URL || 'http://localhost:5173',
+  PORT: Number(requireEnv('PORT')),
+  NODE_ENV: requireEnv('NODE_ENV'),
+  FRONTEND_URL: requireEnv('FRONTEND_URL'),
   DATABASE_URL: requireEnv('DATABASE_URL'),
   JWT_ACCESS_SECRET: requireEnv('JWT_ACCESS_SECRET'),
   JWT_REFRESH_SECRET: requireEnv('JWT_REFRESH_SECRET'),
-  GMAIL_USER: requireEnv('GMAIL_USER'),
-  GMAIL_APP_PASSWORD: requireEnv('GMAIL_APP_PASSWORD'),
+  SMTP_USER: requireEnv('SMTP_USER'),
+  SMTP_PASSWORD: requireEnv('SMTP_PASSWORD'),
+  SMTP_HOST: requireEnv('SMTP_HOST'),
+  SMTP_PORT: Number(requireEnv('SMTP_PORT')),
+  SMTP_SECURE: requireEnv('SMTP_SECURE'),
 };
