@@ -2,10 +2,10 @@
   "name": "productify",
   "version": "1.0.0",
   "description": "",
-  "main": "dist/index.js",
+  "main": "dist/server.js",
   "scripts": {
-    "start": "node dist/index.js",
-    "dev": "tsx watch src/index.ts",
+    "start": "node dist/server.js",
+    "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
@@ -17,16 +17,19 @@
   "license": "ISC",
   "dependencies": {
     "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.2",
     "nodemailer": "^6.10.1",
-    "pg": "^8.20.0"
+    "pg": "^8.20.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@tsconfig/node22": "^22.0.5",
     "@types/bcryptjs": "^2.4.6",
+    "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.9",
