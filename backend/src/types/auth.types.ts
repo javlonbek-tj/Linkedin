@@ -5,6 +5,12 @@ export type AuthTokens = {
   refreshToken: string;
   user: Pick<
     User,
-    'id' | 'firstname' | 'lastname' | 'email' | 'isActivated' | 'role'
+    | 'id'
+    | 'firstname'
+    | 'lastname'
+    | 'username'
+    | 'email'
+    | 'isActivated'
+    | 'role'
   >;
 };

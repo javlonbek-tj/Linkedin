@@ -8,6 +8,7 @@ import {
   connectionRequests,
 } from '../db/schema';
 import { AppError } from '../utils/appError';
+import { createNotification } from './notification.service';
 
 export async function follow(followerId: string, followingId: string) {
   if (followerId === followingId)
@@ -127,6 +128,15 @@ export async function viewProfile(profileOwnerId: string, viewerId: string) {
     .insert(userViews)
     .values({ profileOwnerId, viewerId })
     .returning();
+
+  if (profileOwnerId !== viewerId) {
+    await createNotification({
+      recipientId: profileOwnerId,
+      senderId: viewerId,
+      type: 'profile_view',
+    });
+  }
+
   return view;
 }
 
@@ -162,6 +172,14 @@ export async function sendConnectionRequest(
     .insert(connectionRequests)
     .values({ senderId, receiverId, message })
     .returning();
+
+  await createNotification({
+    recipientId: receiverId,
+    senderId,
+    type: 'connection_request',
+    entityId: request.id,
+  });
+
   return request;
 }
 
@@ -185,6 +203,16 @@ export async function respondToConnectionRequest(
     .set({ status })
     .where(eq(connectionRequests.id, id))
     .returning();
+
+  if (status === 'accepted') {
+    await createNotification({
+      recipientId: request.senderId,
+      senderId: userId,
+      type: 'connection_accepted',
+      entityId: id,
+    });
+  }
+
   return updated;
 }
 

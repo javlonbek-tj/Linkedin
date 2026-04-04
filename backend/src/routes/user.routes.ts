@@ -3,6 +3,7 @@ import type { Response } from 'express';
 import * as userController from '../controllers/user.controller';
 import { authMiddleware } from '../middlewares/auth.middleware';
 import { validate } from '../middlewares/validate.middleware';
+import { profileImagesUpload } from '../middlewares/upload.middleware';
 import { updateUserSchema } from '../schemas/user.schema';
 import type { AuthRequest } from '../middlewares/auth.middleware';
 
@@ -13,7 +14,7 @@ router.use(authMiddleware);
 router.get('/me', (req, res: Response, next) =>
   userController.getMe(req as AuthRequest, res, next),
 );
-router.patch('/me', validate(updateUserSchema), (req, res: Response, next) =>
+router.patch('/me', ...profileImagesUpload, validate(updateUserSchema), (req, res: Response, next) =>
   userController.updateMe(req as AuthRequest, res, next),
 );
 router.delete('/me', (req, res: Response, next) =>

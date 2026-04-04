@@ -3,6 +3,7 @@ import { db } from '../db/db';
 import { posts, postReactions, postViews } from '../db/schema';
 import { AppError } from '../utils/appError';
 import type { NewPostReaction } from '../db/schema';
+import { createNotification } from './notification.service';
 
 export async function reactToPost(postId: string, userId: string, type: NewPostReaction['type']) {
   const [post] = await db.select().from(posts).where(eq(posts.id, postId));
@@ -16,6 +17,16 @@ export async function reactToPost(postId: string, userId: string, type: NewPostR
       set: { type },
     })
     .returning();
+
+  if (post.userId !== userId) {
+    await createNotification({
+      recipientId: post.userId,
+      senderId: userId,
+      type: 'post_reaction',
+      entityId: postId,
+    });
+  }
+
   return reaction;
 }
 

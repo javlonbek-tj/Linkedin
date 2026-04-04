@@ -40,9 +40,17 @@ export async function authMiddleware(
         .json({ success: false, message: 'User not found.' });
     }
 
-    // 4) Check if user changed password after token was issued
+    // 4) Check if the account has been blocked by an admin
+    if (currentUser.isBlocked) {
+      return res
+        .status(403)
+        .json({ success: false, message: 'Your account has been blocked. Please contact support.' });
+    }
+
+    // 5) Check if user changed password after token was issued
     if (
       currentUser.passwordChangedAt &&
+      decoded.iat != null &&
       decoded.iat < currentUser.passwordChangedAt.getTime() / 1000
     ) {
       return res

@@ -4,49 +4,78 @@ import { eq, and, gt } from 'drizzle-orm';
 import { db } from '../db/db';
 import { users, otps, refreshTokens } from '../db/schema';
 import { AppError } from '../utils/appError';
-import { sendOtpEmail } from './mail.service';
+import { sendOTPEmail } from '../utils/mail/mailer';
 import { generateOtp, hashOtp } from '../utils/auth.utils';
 import { generateTokens, validateRefreshToken } from './token.service';
-import type { RegisterInput, VerifyOtpInput, LoginInput } from '../schemas/auth.schema';
+import type {
+  RegisterInput,
+  VerifyOtpInput,
+  LoginInput,
+  ForgotPasswordInput,
+  VerifyResetOtpInput,
+  ResetPasswordInput,
+} from '../schemas/auth.schema';
 import type { AuthTokens } from '../types/auth.types';
 
 const SALT_ROUNDS = 12;
-const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const OTP_TTL_MS = 1 * 60 * 1000; // 1 minutes
 
-async function createAndSendOtp(
-  userId: string,
-  email: string,
-  firstname: string,
-): Promise<void> {
+async function createAndSendOtp(userId: string, email: string): Promise<void> {
   const otp = generateOtp();
   const otpHash = hashOtp(otp);
   const expiresAt = new Date(Date.now() + OTP_TTL_MS);
 
-  await db.delete(otps).where(eq(otps.userId, userId));
-  await db.insert(otps).values({ userId, otpHash, expiresAt });
+  await db
+    .insert(otps)
+    .values({ userId, otpHash, expiresAt })
+    .onConflictDoUpdate({
+      target: otps.userId,
+      set: {
+        otpHash,
+        expiresAt,
+        updatedAt: new Date(),
+      },
+    });
 
-  await sendOtpEmail(email, firstname, otp);
+  try {
+    await sendOTPEmail(email, otp, 'registration');
+  } catch {
+    await db.delete(otps).where(eq(otps.userId, userId));
+    throw new AppError('Failed to send OTP email. Please try again.', 500);
+  }
 }
 
 // ── Service methods ───────────────────────────────────────────────────────────
 
 export async function register(input: RegisterInput): Promise<void> {
-  const { firstname, lastname, email, password } = input;
+  const { firstname, lastname, username, email, password } = input;
 
-  const [existing] = await db
+  const [existingEmail] = await db
     .select({ id: users.id })
     .from(users)
     .where(eq(users.email, email));
-  if (existing) throw new AppError('An account with this email already exists.', 409);
+  if (existingEmail)
+    throw new AppError('An account with this email already exists.', 409);
+
+  const [existingUsername] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.username, username));
+  if (existingUsername)
+    throw new AppError('This username is already taken.', 409);
 
   const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
   const [user] = await db
     .insert(users)
-    .values({ firstname, lastname, email, passwordHash })
-    .returning({ id: users.id, email: users.email, firstname: users.firstname });
+    .values({ firstname, lastname, username, email, passwordHash })
+    .returning({
+      id: users.id,
+      email: users.email,
+      firstname: users.firstname,
+    });
 
-  await createAndSendOtp(user.id, user.email, user.firstname);
+  await createAndSendOtp(user.id, user.email);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -65,23 +94,27 @@ export async function verifyOtp(input: VerifyOtpInput): Promise<AuthTokens> {
     .where(and(eq(otps.userId, user.id), gt(otps.expiresAt, now)));
 
   if (!record)
-    throw new AppError('OTP has expired or does not exist. Please request a new one.', 400);
+    throw new AppError(
+      'OTP has expired or does not exist. Please request a new one.',
+      400,
+    );
 
   const incoming = hashOtp(otp);
-  if (!crypto.timingSafeEqual(Buffer.from(incoming), Buffer.from(record.otpHash))) {
+  if (
+    !crypto.timingSafeEqual(Buffer.from(incoming), Buffer.from(record.otpHash))
+  ) {
     throw new AppError('Invalid OTP.', 400);
   }
 
   await db.delete(otps).where(eq(otps.userId, user.id));
   await db
     .update(users)
-    .set({ isActivated: true, updatedAt: new Date() })
+    .set({ isActivated: true })
     .where(eq(users.id, user.id));
 
   const { accessToken, refreshToken } = await generateTokens({
     userId: user.id,
     email: user.email,
-    iat: Math.floor(Date.now() / 1000),
   });
 
   return {
@@ -91,6 +124,7 @@ export async function verifyOtp(input: VerifyOtpInput): Promise<AuthTokens> {
       id: user.id,
       firstname: user.firstname,
       lastname: user.lastname,
+      username: user.username,
       email: user.email,
       isActivated: true,
       role: user.role,
@@ -102,14 +136,18 @@ export async function verifyOtp(input: VerifyOtpInput): Promise<AuthTokens> {
 
 export async function resendOtp(email: string): Promise<void> {
   const [user] = await db
-    .select({ id: users.id, email: users.email, firstname: users.firstname, isActivated: users.isActivated })
+    .select({
+      id: users.id,
+      email: users.email,
+      isActivated: users.isActivated,
+    })
     .from(users)
     .where(eq(users.email, email));
 
   if (!user) throw new AppError('Account not found.', 404);
   if (user.isActivated) throw new AppError('Email is already verified.', 409);
 
-  await createAndSendOtp(user.id, user.email, user.firstname);
+  await createAndSendOtp(user.id, user.email);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -129,7 +167,6 @@ export async function login(input: LoginInput): Promise<AuthTokens> {
   const { accessToken, refreshToken } = await generateTokens({
     userId: user.id,
     email: user.email,
-    iat: Math.floor(Date.now() / 1000),
   });
 
   return {
@@ -139,6 +176,7 @@ export async function login(input: LoginInput): Promise<AuthTokens> {
       id: user.id,
       firstname: user.firstname,
       lastname: user.lastname,
+      username: user.username,
       email: user.email,
       isActivated: user.isActivated,
       role: user.role,
@@ -169,7 +207,6 @@ export async function refresh(incomingToken: string): Promise<AuthTokens> {
   const { accessToken, refreshToken: newRefreshToken } = await generateTokens({
     userId: user.id,
     email: user.email,
-    iat: Math.floor(Date.now() / 1000),
   });
 
   return {
@@ -179,6 +216,7 @@ export async function refresh(incomingToken: string): Promise<AuthTokens> {
       id: user.id,
       firstname: user.firstname,
       lastname: user.lastname,
+      username: user.username,
       email: user.email,
       isActivated: user.isActivated,
       role: user.role,
@@ -190,4 +228,118 @@ export async function refresh(incomingToken: string): Promise<AuthTokens> {
 
 export async function logout(userId: string): Promise<void> {
   await db.delete(refreshTokens).where(eq(refreshTokens.userId, userId));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+const RESET_OTP_TTL_MS = 1 * 60 * 1000; // 1 minutes
+
+export async function forgotPassword({
+  email,
+}: ForgotPasswordInput): Promise<void> {
+  const [user] = await db
+    .select({ id: users.id, email: users.email, firstname: users.firstname })
+    .from(users)
+    .where(eq(users.email, email));
+
+  if (!user) {
+    throw new AppError('User not found.', 404);
+  }
+
+  const otp = generateOtp();
+  const otpHash = hashOtp(otp);
+  const expiresAt = new Date(Date.now() + RESET_OTP_TTL_MS);
+
+  await db
+    .update(users)
+    .set({ passwordResetToken: otpHash, passwordResetExpires: expiresAt })
+    .where(eq(users.id, user.id));
+
+  try {
+    await sendOTPEmail(user.email, otp, 'password_reset');
+  } catch {
+    await db
+      .update(users)
+      .set({ passwordResetToken: null, passwordResetExpires: null })
+      .where(eq(users.id, user.id));
+    throw new AppError('Failed to send OTP email. Please try again.', 500);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+const RESET_TOKEN_TTL_MS = 15 * 60 * 1000; // 15 minutes
+
+export async function verifyResetOtp({
+  email,
+  otp,
+}: VerifyResetOtpInput): Promise<{ resetToken: string }> {
+  const [user] = await db.select().from(users).where(eq(users.email, email));
+
+  if (!user || !user.passwordResetToken || !user.passwordResetExpires) {
+    throw new AppError('Invalid or expired OTP.', 400);
+  }
+  if (user.passwordResetExpires < new Date()) {
+    throw new AppError('OTP has expired. Please request a new one.', 400);
+  }
+
+  const incoming = hashOtp(otp);
+  if (
+    !crypto.timingSafeEqual(
+      Buffer.from(incoming),
+      Buffer.from(user.passwordResetToken),
+    )
+  ) {
+    throw new AppError('Invalid OTP.', 400);
+  }
+
+  const plainToken = crypto.randomBytes(32).toString('hex');
+  const tokenHash = crypto
+    .createHash('sha256')
+    .update(plainToken)
+    .digest('hex');
+  const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
+
+  await db
+    .update(users)
+    .set({ passwordResetToken: tokenHash, passwordResetExpires: expiresAt })
+    .where(eq(users.id, user.id));
+
+  return { resetToken: plainToken };
+}
+
+export async function resetPassword({
+  resetToken,
+  password,
+}: ResetPasswordInput): Promise<void> {
+  const tokenHash = crypto
+    .createHash('sha256')
+    .update(resetToken)
+    .digest('hex');
+
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(eq(users.passwordResetToken, tokenHash));
+
+  if (!user || !user.passwordResetExpires) {
+    throw new AppError('Invalid or expired reset token.', 400);
+  }
+  if (user.passwordResetExpires < new Date()) {
+    throw new AppError('Reset token has expired. Please start over.', 400);
+  }
+
+  const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+
+  await db
+    .update(users)
+    .set({
+      passwordHash,
+      passwordChangedAt: new Date(),
+      passwordResetToken: null,
+      passwordResetExpires: null,
+    })
+    .where(eq(users.id, user.id));
+
+  await db.delete(refreshTokens).where(eq(refreshTokens.userId, user.id));
 }

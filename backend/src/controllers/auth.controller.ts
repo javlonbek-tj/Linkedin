@@ -1,10 +1,18 @@
 import { Request, Response, NextFunction } from 'express';
 import * as authService from '../services/auth.service';
+import { REFRESH_TOKEN_TTL_MS } from '../services/token.service';
 import { ENV } from '../config';
 import type { AuthRequest } from '../middlewares/auth.middleware';
-import type { RegisterInput, VerifyOtpInput, LoginInput } from '../schemas/auth.schema';
+import type {
+  RegisterInput,
+  VerifyOtpInput,
+  LoginInput,
+  ForgotPasswordInput,
+  VerifyResetOtpInput,
+  ResetPasswordInput,
+} from '../schemas/auth.schema';
 
-const REFRESH_TOKEN_COOKIE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const REFRESH_TOKEN_COOKIE_TTL_MS = REFRESH_TOKEN_TTL_MS;
 
 function setRefreshTokenCookie(res: Response, token: string): void {
   res.cookie('refreshToken', token, {
@@ -25,7 +33,8 @@ export async function register(
     await authService.register(req.body as RegisterInput);
     res.status(201).json({
       status: 'success',
-      message: 'Registration successful. A 6-digit verification code has been sent to your email.',
+      message:
+        'Registration successful. A 6-digit verification code has been sent to your email.',
     });
   } catch (error) {
     next(error);
@@ -39,7 +48,9 @@ export async function verifyOtp(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const { refreshToken, ...data } = await authService.verifyOtp(req.body as VerifyOtpInput);
+    const { refreshToken, ...data } = await authService.verifyOtp(
+      req.body as VerifyOtpInput,
+    );
     setRefreshTokenCookie(res, refreshToken);
     res.status(200).json({ status: 'success', data });
   } catch (error) {
@@ -57,7 +68,7 @@ export async function resendOtp(
     await authService.resendOtp(req.body.email);
     res.status(200).json({
       status: 'success',
-      message: 'A new verification code has been sent to your email.',
+      message: 'A 6-digit verification code has been sent to your email.',
     });
   } catch (error) {
     next(error);
@@ -71,7 +82,9 @@ export async function login(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const { refreshToken, ...data } = await authService.login(req.body as LoginInput);
+    const { refreshToken, ...data } = await authService.login(
+      req.body as LoginInput,
+    );
     setRefreshTokenCookie(res, refreshToken);
     res.status(200).json({ status: 'success', data });
   } catch (error) {
@@ -88,12 +101,64 @@ export async function refresh(
   try {
     const token = req.cookies.refreshToken as string | undefined;
     if (!token) {
-      res.status(401).json({ status: 'fail', message: 'Refresh token required.' });
+      res
+        .status(401)
+        .json({ status: 'fail', message: 'Refresh token required.' });
       return;
     }
     const { refreshToken, ...data } = await authService.refresh(token);
     setRefreshTokenCookie(res, refreshToken);
     res.status(200).json({ status: 'success', data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// POST /auth/forgot-password
+export async function forgotPassword(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    await authService.forgotPassword(req.body as ForgotPasswordInput);
+    res.status(200).json({
+      status: 'success',
+      message: 'A 6-digit verification code has been sent to your email.',
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// POST /auth/verify-reset-otp
+export async function verifyResetOtp(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const data = await authService.verifyResetOtp(
+      req.body as VerifyResetOtpInput,
+    );
+    res.status(200).json({ status: 'success', data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// POST /auth/reset-password
+export async function resetPassword(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    await authService.resetPassword(req.body as ResetPasswordInput);
+    res.status(200).json({
+      status: 'success',
+      message: 'Password has been reset successfully.',
+    });
   } catch (error) {
     next(error);
   }
@@ -108,7 +173,9 @@ export async function logout(
   try {
     await authService.logout(req.user!.userId);
     res.clearCookie('refreshToken', { httpOnly: true, sameSite: 'strict' });
-    res.status(200).json({ status: 'success', message: 'Logged out successfully.' });
+    res
+      .status(200)
+      .json({ status: 'success', message: 'Logged out successfully.' });
   } catch (error) {
     next(error);
   }

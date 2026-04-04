@@ -2,16 +2,17 @@ import jwt from 'jsonwebtoken';
 import { ENV } from '../config/env';
 import { db } from '../db/db';
 import { refreshTokens } from '../db/schema';
+import { AppError } from '../utils/appError';
 
 interface Payload {
   userId: string;
   email: string;
-  iat: number;
+  iat?: number;
 }
 
 const ACCESS_TOKEN_TTL = '15m';
 const REFRESH_TOKEN_TTL = '7d';
-const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+export const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export async function generateTokens(
   payload: Payload,
@@ -37,7 +38,7 @@ export function validateAccessToken(token: string): Payload {
   try {
     return jwt.verify(token, ENV.JWT_ACCESS_SECRET) as Payload;
   } catch {
-    throw new Error('Invalid or expired access token.');
+    throw new AppError('Invalid or expired access token.', 401);
   }
 }
 
@@ -45,6 +46,6 @@ export function validateRefreshToken(token: string): Payload {
   try {
     return jwt.verify(token, ENV.JWT_REFRESH_SECRET) as Payload;
   } catch {
-    throw new Error('Invalid or expired refresh token.');
+    throw new AppError('Invalid or expired refresh token.', 401);
   }
 }

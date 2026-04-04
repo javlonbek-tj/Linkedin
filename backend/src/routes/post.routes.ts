@@ -5,6 +5,7 @@ import * as commentController from '../controllers/comment.controller';
 import * as interactionController from '../controllers/post-interaction.controller';
 import { authMiddleware } from '../middlewares/auth.middleware';
 import { validate } from '../middlewares/validate.middleware';
+import { postMediaUpload } from '../middlewares/upload.middleware';
 import { createPostSchema, updatePostSchema } from '../schemas/post.schema';
 import { createCommentSchema } from '../schemas/comment.schema';
 import { reactSchema } from '../schemas/post-interaction.schema';
@@ -27,10 +28,10 @@ router.get('/user/:userId', (req, res: Response, next) =>
 router.get('/:id', (req, res: Response, next) =>
   postController.getPost(req as AuthRequest, res, next),
 );
-router.post('/', validate(createPostSchema), (req, res: Response, next) =>
+router.post('/', ...postMediaUpload, validate(createPostSchema), (req, res: Response, next) =>
   postController.createPost(req as AuthRequest, res, next),
 );
-router.patch('/:id', validate(updatePostSchema), (req, res: Response, next) =>
+router.patch('/:id', ...postMediaUpload, validate(updatePostSchema), (req, res: Response, next) =>
   postController.updatePost(req as AuthRequest, res, next),
 );
 router.delete('/:id', (req, res: Response, next) =>

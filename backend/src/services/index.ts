@@ -2,7 +2,6 @@ export * from './auth.service';
 export * from './comment.service';
 export * from './education.service';
 export * from './experience.service';
-export * from './mail.service';
 export * from './message.service';
 export * from './notification.service';
 export * from './post-interaction.service';
